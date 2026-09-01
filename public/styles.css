@@ -115,6 +115,41 @@ html, body {
   line-height: 1.4;
 }
 
+.folder-status {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 10px;
+  padding: 12px 6px 4px;
+}
+.folder-status .folder-line {
+  font-size: 12px;
+  color: var(--sidebar-fg);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.folder-status .folder-sub {
+  font-size: 11px;
+  color: var(--sidebar-muted);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.folder-status .folder-actions {
+  display: flex;
+  gap: 10px;
+}
+.folder-status button.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.folder-status button.link-btn.muted { color: var(--sidebar-muted); }
+
 /* ---------- Main content ---------- */
 
 .content {

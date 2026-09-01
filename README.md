@@ -46,9 +46,23 @@ in that terminal.
    **Transcribe**. The first time you do this for a given quality level, it
    downloads that model (roughly 100–500MB depending on the size you picked)
    — after that, transcription works offline and is instant to start.
-5. Read, copy, or download the transcript. Recordings and transcripts are
-   kept in the browser's local storage for this page — use **Download
-   recording** / **Download transcript** to save real files to disk.
+5. Read, copy, or download the transcript.
+
+### Saving real files automatically
+
+By default, recordings and transcripts only live in the browser's local
+storage — use **Download recording** / **Download transcript** on a meeting
+to save a copy to disk manually.
+
+To have every meeting saved as real files automatically instead, use the
+**"Choose folder…"** control near the bottom of the sidebar. Pick (or create)
+a folder — e.g. `Documents\Meeting Scribe` — and grant access once. From then
+on, every recording gets its own subfolder there (named by date and title)
+containing `audio.webm` and, once transcribed, `transcript.txt` and
+`transcript.json`. This uses Chrome's File System Access API, so it only
+works in Chrome/Edge, and Chrome may occasionally ask you to re-approve
+access to that folder (the sidebar will show a **Reconnect** button when
+that happens).
 
 ## Important: recording consent
 
@@ -82,3 +96,11 @@ are, and as good practice, just tell people you're recording.
 - System audio capture requires re-picking "Entire Screen + Share audio" for
   every recording; this is a Chrome/OS requirement, not something the app
   can skip.
+- Auto-save to disk (File System Access API) only works in Chrome/Edge, and
+  the browser can't reveal the folder's full path (e.g. it'll show
+  "Meeting Scribe", not `C:\Users\...\Documents\Meeting Scribe`) — a security
+  restriction of the API, not something the app can bypass.
+- If you rename a meeting after it's been auto-saved, new files (like the
+  transcript) still go to the original folder created for that meeting,
+  rather than one matching the new name — this keeps files from a single
+  meeting from getting split across two folders.

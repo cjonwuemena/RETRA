@@ -1,6 +1,7 @@
 (() => {
   const content = document.getElementById('content');
   const meetingListEl = document.getElementById('meeting-list');
+  const folderStatusEl = document.getElementById('folder-status');
 
   const prefs = {
     get modelId() { return localStorage.getItem('modelId') || 'base.en'; },
@@ -94,6 +95,63 @@
     await refreshSidebar();
     const meeting = await DB.getMeeting(id);
     renderMeetingPanel(meeting);
+  }
+
+  // ---------------------------------------------------------------------
+  // Disk save (File System Access API) — optional, auto-saves real files
+  // ---------------------------------------------------------------------
+
+  async function refreshFolderStatus() {
+    const status = await DiskSave.getStatus();
+
+    if (!status.supported) {
+      folderStatusEl.innerHTML = `<p class="folder-sub">Auto-save to disk isn't supported in this browser — use the Download buttons on each meeting instead.</p>`;
+      return;
+    }
+
+    if (!status.name) {
+      folderStatusEl.innerHTML = `
+        <div class="folder-line">📁 Not saving to disk</div>
+        <p class="folder-sub">Meetings currently only live in this browser. Connect a folder to have recordings and transcripts saved as real files automatically.</p>
+        <div class="folder-actions"><button id="connect-folder-btn" class="link-btn">Choose folder…</button></div>`;
+      document.getElementById('connect-folder-btn').addEventListener('click', async () => {
+        try {
+          await DiskSave.pickFolder();
+        } catch {
+          /* user cancelled the picker */
+        }
+        refreshFolderStatus();
+      });
+      return;
+    }
+
+    if (status.connected) {
+      folderStatusEl.innerHTML = `
+        <div class="folder-line">📁 Saving to: <b>${escapeHtml(status.name)}</b></div>
+        <p class="folder-sub">Each meeting gets its own subfolder there with the recording and transcript.</p>
+        <div class="folder-actions"><button id="disconnect-folder-btn" class="link-btn muted">Disconnect</button></div>`;
+      document.getElementById('disconnect-folder-btn').addEventListener('click', async () => {
+        await DiskSave.disconnectFolder();
+        refreshFolderStatus();
+      });
+      return;
+    }
+
+    folderStatusEl.innerHTML = `
+      <div class="folder-line">📁 ${escapeHtml(status.name)} (access needed)</div>
+      <p class="folder-sub">The browser needs you to re-approve access to this folder.</p>
+      <div class="folder-actions">
+        <button id="reconnect-folder-btn" class="link-btn">Reconnect</button>
+        <button id="disconnect-folder-btn" class="link-btn muted">Disconnect</button>
+      </div>`;
+    document.getElementById('reconnect-folder-btn').addEventListener('click', async () => {
+      await DiskSave.reconnect().catch(() => false);
+      refreshFolderStatus();
+    });
+    document.getElementById('disconnect-folder-btn').addEventListener('click', async () => {
+      await DiskSave.disconnectFolder();
+      refreshFolderStatus();
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -284,7 +342,18 @@
     rec.chunks = [];
 
     await DB.saveAudioBlob(meetingId, blob);
-    await DB.updateMeeting(meetingId, { status: 'recorded', durationSec, sizeBytes: blob.size });
+    let updated = await DB.updateMeeting(meetingId, { status: 'recorded', durationSec, sizeBytes: blob.size });
+
+    // Auto-save to disk if a folder is connected. The subfolder name is
+    // fixed at this point so later renames don't split files across folders.
+    const diskFolderName = DiskSave.slugify(updated.title, updated.createdAt);
+    const savedToDisk = await DiskSave.saveMeetingFiles(diskFolderName, [
+      { name: 'audio.webm', contents: blob },
+    ]).catch(() => false);
+    if (savedToDisk) {
+      updated = await DB.updateMeeting(meetingId, { diskFolderName, savedToDisk: true });
+    }
+
     await selectMeeting(meetingId);
   }
 
@@ -316,7 +385,7 @@
   function titleHeader(meeting) {
     return `
       <input type="text" id="title-input" class="title-field" value="${escapeHtml(meeting.title)}" />
-      <p class="subtle">${fmtWhen(meeting.createdAt)} · ${fmtDuration(meeting.durationSec || 0)}${meeting.systemAudioCaptured === false ? ' · mic only' : ''}</p>`;
+      <p class="subtle">${fmtWhen(meeting.createdAt)} · ${fmtDuration(meeting.durationSec || 0)}${meeting.systemAudioCaptured === false ? ' · mic only' : ''}${meeting.savedToDisk ? ` · saved to disk (${escapeHtml(meeting.diskFolderName)})` : ''}</p>`;
   }
 
   function wireTitleInput(meeting) {
@@ -417,7 +486,15 @@
       const audioBlob = await DB.getAudioBlob(meetingId);
       const transcript = await ASR.transcribeBlob(audioBlob, modelId, { onModelProgress });
       await DB.saveTranscript(meetingId, transcript);
-      await DB.updateMeeting(meetingId, { status: 'done' });
+      const updated = await DB.updateMeeting(meetingId, { status: 'done' });
+
+      if (updated.diskFolderName) {
+        await DiskSave.saveMeetingFiles(updated.diskFolderName, [
+          { name: 'transcript.txt', contents: transcript.fullText },
+          { name: 'transcript.json', contents: JSON.stringify(transcript, null, 2) },
+        ]).catch(() => false);
+      }
+
       await refreshSidebar();
       if (selectedMeetingId === meetingId) {
         renderTranscript(await DB.getMeeting(meetingId));
@@ -476,4 +553,5 @@
   document.getElementById('new-meeting-btn').addEventListener('click', renderSetupPanel);
 
   renderSetupPanel();
+  refreshFolderStatus();
 })();

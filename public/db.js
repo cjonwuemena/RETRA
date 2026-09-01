@@ -2,7 +2,7 @@
 // the recorded audio blob, and the transcript — lives in this one local
 // per-origin database. Nothing ever leaves the machine.
 const DB_NAME = 'meeting-scribe';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -17,6 +17,9 @@ function openDb() {
       }
       if (!db.objectStoreNames.contains('transcripts')) {
         db.createObjectStore('transcripts', { keyPath: 'meetingId' });
+      }
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings', { keyPath: 'key' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -112,6 +115,17 @@ const DB = {
     if (!row) return null;
     const { meetingId: _drop, ...rest } = row;
     return rest;
+  },
+
+  async setSetting(key, value) {
+    await withStore('settings', 'readwrite', (s) => s.put({ key, value }));
+  },
+
+  async getSetting(key) {
+    const db = await openDb();
+    const tx = db.transaction('settings', 'readonly');
+    const row = await reqToPromise(tx.objectStore('settings').get(key));
+    return row ? row.value : null;
   },
 };
 
