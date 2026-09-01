@@ -1,0 +1,13 @@
+{
+  "name": "meeting-scribe",
+  "version": "1.0.0",
+  "description": "Local, offline AI meeting recorder and transcriber. Records your mic and system audio, transcribes fully on-device in the browser via WebAssembly — no cloud, no subscription, nothing installed.",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
