@@ -64,6 +64,40 @@ works in Chrome/Edge, and Chrome may occasionally ask you to re-approve
 access to that folder (the sidebar will show a **Reconnect** button when
 that happens).
 
+## Hosting it on the web (GitHub Pages)
+
+The app's files live in `docs/`, which GitHub Pages can serve directly —
+nothing server-side is needed, since all recording/transcription still
+happens in each visitor's own browser.
+
+**One-time setup:**
+1. On GitHub, go to this repo → **Settings** → **Pages**.
+2. Under "Build and deployment", set **Source** to "Deploy from a branch".
+3. Set **Branch** to `main` and the folder to `/docs`, then **Save**.
+4. After a minute or two, GitHub will show the live URL — something like
+   `https://cjonwuemena.github.io/RETRA/`.
+
+From then on, every `git push` to `main` updates the live site automatically.
+
+**What's different from running it locally:**
+- It's public — anyone with the link can open and use it. Each visitor gets
+  their own fully independent copy (their own browser storage, their own
+  disk-save folder if they connect one) — you never see their recordings and
+  they never see yours, since nothing is stored on a server.
+- GitHub Pages can't set the `Cross-Origin-Opener-Policy` /
+  `Cross-Origin-Embedder-Policy` headers `server.js` sets locally, so
+  transcription runs single-threaded there — it still works, just somewhat
+  slower than running it locally via `npm start`.
+- HTTPS is automatic (GitHub Pages provides it), which is required anyway —
+  microphone and screen capture don't work over plain HTTP.
+
+**Using your own domain instead of `github.io`:** if you want it at, say,
+`meetings.giltan.co.uk`, add a `CNAME` record for that subdomain pointing to
+`cjonwuemena.github.io` in GoDaddy's DNS settings for `giltan.co.uk`, then
+enter that subdomain in the same GitHub Pages settings page. This is
+independent of your GoDaddy Airo site — Airo-built sites don't support
+custom app code, so this app has to live at its own URL either way.
+
 ## Important: recording consent
 
 Nothing about this tool notifies other people on a call that you're
@@ -79,8 +113,9 @@ are, and as good practice, just tell people you're recording.
   system's audio output (`getDisplayMedia`) are mixed into a single track
   via the Web Audio API and recorded with `MediaRecorder`.
 - **Storage**: meetings, recordings, and transcripts are stored in the
-  browser's IndexedDB, scoped to `http://localhost:5173`. Clearing that
-  origin's site data in the browser will delete them.
+  browser's IndexedDB, scoped to whatever URL you're using the app from
+  (`http://localhost:5173` when run locally, or its GitHub Pages URL if
+  hosted). Clearing that origin's site data in the browser will delete them.
 - **Transcription**: runs in-browser via
   [Transformers.js](https://huggingface.co/docs/transformers.js) using a
   WebAssembly build of OpenAI's Whisper model (converted to ONNX by the
