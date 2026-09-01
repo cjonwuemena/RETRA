@@ -44,6 +44,9 @@ const server = http.createServer((req, res) => {
       // in-browser Whisper model) can use multi-threaded WASM.
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
+      // This app changes during development — never let the browser serve a
+      // stale cached copy of the HTML/JS after an update.
+      'Cache-Control': 'no-store',
     });
     res.end(data);
   });

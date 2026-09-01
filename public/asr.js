@@ -31,6 +31,14 @@ async function getTranscriber(modelId, onProgress) {
 
   cachedModelId = modelId;
   cachedPipeline = pipeline('automatic-speech-recognition', MODEL_IDS[modelId], {
+    // Whisper's default quantized decoder (4-bit, block-quantized MatMulNBits)
+    // fails to load in onnxruntime-web's WASM/CPU backend with a missing-scale
+    // error. Forcing plain fp32 for both sub-models avoids quantization
+    // entirely — larger download, but guaranteed to load correctly.
+    dtype: {
+      encoder_model: 'fp32',
+      decoder_model_merged: 'fp32',
+    },
     progress_callback: onProgress,
   });
   return cachedPipeline;
