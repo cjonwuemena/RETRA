@@ -25,20 +25,20 @@ async function getTranscriber(modelId, onProgress) {
   if (cachedPipeline && cachedModelId === modelId) return cachedPipeline;
 
   if (!transformersModule) {
-    transformersModule = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/+esm');
+    // Pinned to v3, not v4: v4 pulls in a newer onnxruntime-web build that fails
+    // to load ANY quantized variant of this model (missing-scale error on load),
+    // which previously forced us onto unquantized fp32 weights — correct, but
+    // roughly 5-10x slower to run, turning real meeting-length recordings into
+    // multi-hour transcriptions. v3's older onnxruntime-web loads quantized
+    // ("q8") weights correctly, restoring both a smaller download and fast
+    // inference. Verified directly against this exact model before switching.
+    transformersModule = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/+esm');
   }
   const { pipeline } = transformersModule;
 
   cachedModelId = modelId;
   cachedPipeline = pipeline('automatic-speech-recognition', MODEL_IDS[modelId], {
-    // Whisper's default quantized decoder (4-bit, block-quantized MatMulNBits)
-    // fails to load in onnxruntime-web's WASM/CPU backend with a missing-scale
-    // error. Forcing plain fp32 for both sub-models avoids quantization
-    // entirely — larger download, but guaranteed to load correctly.
-    dtype: {
-      encoder_model: 'fp32',
-      decoder_model_merged: 'fp32',
-    },
+    dtype: 'q8',
     progress_callback: onProgress,
   });
   return cachedPipeline;
