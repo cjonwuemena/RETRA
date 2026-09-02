@@ -67,6 +67,34 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
+  // MediaRecorder writes WebM files with no duration metadata at all, which
+  // is why the <audio> seek bar only ever lets you scrub the first few
+  // seconds it can quickly estimate — the player has no idea how long the
+  // file actually is. This patches the correct duration into the file.
+  async function fixRecordingDuration(blob, durationMs) {
+    try {
+      const fixWebmDuration = (await import('https://cdn.jsdelivr.net/npm/fix-webm-duration@1/+esm')).default;
+      return await fixWebmDuration(blob, durationMs, { logger: false });
+    } catch {
+      return blob; // Seeking may be limited, but the recording itself is unaffected.
+    }
+  }
+
+  // Recordings made before the duration fix (or if it silently failed) are
+  // patched retroactively here, using the wall-clock duration we already
+  // recorded separately — that value was never affected by the broken file
+  // metadata, so no guessing is needed.
+  async function getSeekableAudioUrl(meeting) {
+    let blob = await DB.getAudioBlob(meeting.id);
+    if (!blob) return null;
+    if (!meeting.durationFixed) {
+      blob = await fixRecordingDuration(blob, (meeting.durationSec || 0) * 1000);
+      await DB.saveAudioBlob(meeting.id, blob);
+      await DB.updateMeeting(meeting.id, { durationFixed: true });
+    }
+    return URL.createObjectURL(blob);
+  }
+
   // ---------------------------------------------------------------------
   // Sidebar
   // ---------------------------------------------------------------------
@@ -328,7 +356,8 @@
     await stopped;
 
     const durationSec = (Date.now() - rec.startedAt) / 1000;
-    const blob = new Blob(rec.chunks, { type: 'audio/webm' });
+    const rawBlob = new Blob(rec.chunks, { type: 'audio/webm' });
+    const blob = await fixRecordingDuration(rawBlob, durationSec * 1000);
 
     rec.micStream.getTracks().forEach((t) => t.stop());
     rec.sysStream?.getTracks().forEach((t) => t.stop());
@@ -429,8 +458,7 @@
 
   async function renderReadyToTranscribe(meeting) {
     const models = ASR.listModels();
-    const audioBlob = await DB.getAudioBlob(meeting.id);
-    const audioUrl = audioBlob ? URL.createObjectURL(audioBlob) : null;
+    const audioUrl = await getSeekableAudioUrl(meeting);
 
     content.innerHTML = `
       <div class="panel">
@@ -534,8 +562,7 @@
   async function renderTranscript(meeting) {
     const transcript = await DB.getTranscript(meeting.id);
     const segments = transcript?.segments || [];
-    const audioBlob = await DB.getAudioBlob(meeting.id);
-    const audioUrl = audioBlob ? URL.createObjectURL(audioBlob) : null;
+    const audioUrl = await getSeekableAudioUrl(meeting);
 
     content.innerHTML = `
       <div class="panel">
