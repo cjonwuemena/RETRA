@@ -370,7 +370,10 @@
 
   function renderTranscribingPlaceholder(meeting) {
     // Reached only if the user navigates back to this meeting while a
-    // transcription started from this same tab is still running.
+    // transcription started from this same tab is still running. (Any
+    // "transcribing" meeting found when the app first loads gets swept to
+    // "error" automatically — see resetStuckTranscriptions — since closing
+    // or reloading the tab always kills the in-progress work.)
     content.innerHTML = `
       <div class="panel">
         ${titleHeader(meeting)}
@@ -378,8 +381,28 @@
           <div class="spinner"></div>
           <p class="progress-label">Transcription in progress — this will update automatically when it finishes.</p>
         </div>
+        <div class="btn-row">
+          <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+        </div>
       </div>`;
     wireTitleInput(meeting);
+    document.getElementById('cancel-btn').addEventListener('click', async () => {
+      await DB.updateMeeting(meeting.id, { status: 'recorded' });
+      selectMeeting(meeting.id);
+    });
+  }
+
+  // Any meeting still marked "transcribing" when the app starts was
+  // interrupted by a tab close, reload, or crash — actual transcription
+  // can't survive that, so the status would otherwise be stuck forever
+  // with no way to retry it.
+  async function resetStuckTranscriptions() {
+    const meetings = await DB.listMeetings();
+    for (const m of meetings) {
+      if (m.status === 'transcribing') {
+        await DB.updateMeeting(m.id, { status: 'error', error: 'Interrupted — the browser tab was closed or reloaded while transcribing. Try again.' });
+      }
+    }
   }
 
   function titleHeader(meeting) {
@@ -552,6 +575,6 @@
 
   document.getElementById('new-meeting-btn').addEventListener('click', renderSetupPanel);
 
-  renderSetupPanel();
+  resetStuckTranscriptions().then(renderSetupPanel);
   refreshFolderStatus();
 })();
