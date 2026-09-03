@@ -1,0 +1,13 @@
+{
+  "name": "meeting-scribe-local-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Optional local helper for Meeting Scribe. Runs transcription natively via whisper.cpp instead of in-browser WebAssembly - roughly 100x faster, still fully free and local. The web app automatically uses this when it's running.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0"
+  }
+}

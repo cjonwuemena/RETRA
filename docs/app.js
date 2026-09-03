@@ -459,6 +459,7 @@
   async function renderReadyToTranscribe(meeting) {
     const models = ASR.listModels();
     const audioUrl = await getSeekableAudioUrl(meeting);
+    const localEngineOn = await LocalEngine.isAvailable();
 
     content.innerHTML = `
       <div class="panel">
@@ -471,7 +472,9 @@
             <select id="model-select">
               ${models.map((m) => `<option value="${m.id}" ${m.id === prefs.modelId ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}
             </select>
-            <p class="hint">Runs fully in this browser tab — nothing is uploaded. The model downloads once (a couple hundred MB) and is cached for every future meeting.</p>
+            ${localEngineOn
+              ? '<p class="hint">⚡ Local engine detected — transcription will run natively and be dramatically faster than in-browser.</p>'
+              : '<p class="hint">Runs fully in this browser tab — nothing is uploaded. The model downloads once (a couple hundred MB) and is cached for every future meeting. For much faster transcription, run the optional local engine (see README).</p>'}
           </div>
           <button id="transcribe-btn" class="btn btn-primary btn-block">Transcribe</button>
         </div>
@@ -495,8 +498,54 @@
     });
   }
 
+  async function finishTranscription(meetingId, transcript) {
+    await DB.saveTranscript(meetingId, transcript);
+    const updated = await DB.updateMeeting(meetingId, { status: 'done' });
+
+    if (updated.diskFolderName) {
+      await DiskSave.saveMeetingFiles(updated.diskFolderName, [
+        { name: 'transcript.txt', contents: transcript.fullText },
+        { name: 'transcript.json', contents: JSON.stringify(transcript, null, 2) },
+      ]).catch(() => false);
+    }
+
+    await refreshSidebar();
+    if (selectedMeetingId === meetingId) {
+      renderTranscript(await DB.getMeeting(meetingId));
+    }
+  }
+
+  async function failTranscription(meetingId, err) {
+    await DB.updateMeeting(meetingId, { status: 'error', error: String(err?.message || err) });
+    await refreshSidebar();
+    if (selectedMeetingId === meetingId) {
+      renderMeetingPanel(await DB.getMeeting(meetingId));
+    }
+  }
+
   async function runTranscription(meetingId, modelId) {
     await DB.updateMeeting(meetingId, { status: 'transcribing' });
+
+    const useLocalEngine = await LocalEngine.isAvailable();
+
+    if (useLocalEngine) {
+      content.innerHTML = `
+        <div class="panel">
+          <h1 class="title-field" style="border:none">Transcribing…</h1>
+          <div class="card">
+            <div class="spinner"></div>
+            <p class="progress-label">Using your local engine — this should only take a fraction of the recording's length.</p>
+          </div>
+        </div>`;
+      try {
+        const audioBlob = await DB.getAudioBlob(meetingId);
+        const transcript = await LocalEngine.transcribe(audioBlob, modelId);
+        await finishTranscription(meetingId, transcript);
+      } catch (err) {
+        await failTranscription(meetingId, err);
+      }
+      return;
+    }
 
     content.innerHTML = `
       <div class="panel">
@@ -505,6 +554,7 @@
           <div class="spinner"></div>
           <div id="progress-area"><p class="progress-label">Preparing…</p></div>
         </div>
+        <p class="hint">Tip: running the optional local engine makes this roughly 100x faster. See the README for setup.</p>
       </div>`;
 
     const progressArea = document.getElementById('progress-area');
@@ -536,26 +586,9 @@
     try {
       const audioBlob = await DB.getAudioBlob(meetingId);
       const transcript = await ASR.transcribeBlob(audioBlob, modelId, { onModelProgress });
-      await DB.saveTranscript(meetingId, transcript);
-      const updated = await DB.updateMeeting(meetingId, { status: 'done' });
-
-      if (updated.diskFolderName) {
-        await DiskSave.saveMeetingFiles(updated.diskFolderName, [
-          { name: 'transcript.txt', contents: transcript.fullText },
-          { name: 'transcript.json', contents: JSON.stringify(transcript, null, 2) },
-        ]).catch(() => false);
-      }
-
-      await refreshSidebar();
-      if (selectedMeetingId === meetingId) {
-        renderTranscript(await DB.getMeeting(meetingId));
-      }
+      await finishTranscription(meetingId, transcript);
     } catch (err) {
-      await DB.updateMeeting(meetingId, { status: 'error', error: String(err?.message || err) });
-      await refreshSidebar();
-      if (selectedMeetingId === meetingId) {
-        renderMeetingPanel(await DB.getMeeting(meetingId));
-      }
+      await failTranscription(meetingId, err);
     }
   }
 

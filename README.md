@@ -20,8 +20,10 @@ joining your call.
 - [Node.js](https://nodejs.org) (already installed on this machine)
 - Google Chrome or Microsoft Edge (for system-audio capture support)
 
-No `npm install` is needed — the app has zero dependencies. The transcription
-engine loads directly from a CDN into the browser tab the first time you use it.
+No `npm install` is needed for the main app — it has zero dependencies. The
+transcription engine loads directly from a CDN into the browser tab the
+first time you use it. (The optional local engine below has its own small
+setup step, since it trades browser sandboxing for real native speed.)
 
 ## Running it
 
@@ -47,6 +49,41 @@ in that terminal.
    downloads that model (roughly 100–500MB depending on the size you picked)
    — after that, transcription works offline and is instant to start.
 5. Read, copy, or download the transcript.
+
+### Much faster transcription (recommended): the local engine
+
+By default, transcription runs entirely in the browser via WebAssembly. This
+works everywhere with zero setup, but it's genuinely slow — a 30-minute
+meeting can take hours, since browser WASM has no access to your CPU's full
+capabilities.
+
+The `local-engine/` folder is an optional helper that fixes this. It's a
+small, separate Node process (not a browser sandbox) that runs
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp) — native, highly
+optimized C++ — instead. In testing, this was **roughly 100x faster** than
+the in-browser path for identical audio. Still completely free, still fully
+local — nothing about your recordings changes, only how fast transcription
+runs.
+
+**Setup (one time):**
+```bash
+cd local-engine
+npm install
+npm start
+```
+
+Leave that running in its own terminal. The web app automatically detects it
+(you'll see "⚡ Local engine detected" on the Transcribe screen) and uses it
+instead of the slow in-browser path — no configuration needed. If you close
+that terminal, the app just falls back to the in-browser method again.
+
+The first time you transcribe, it downloads the whisper.cpp engine (~8MB)
+and your chosen model (~150–500MB) to `~/.meeting-scribe-engine` — a one-time
+cost, cached for every future meeting.
+
+This works whether you're running the main app via `npm start` locally or
+using the hosted GitHub Pages version — the web page talks to this local
+helper over `localhost`, which browsers allow even from an HTTPS page.
 
 ### Saving real files automatically
 
@@ -139,3 +176,7 @@ are, and as good practice, just tell people you're recording.
   transcript) still go to the original folder created for that meeting,
   rather than one matching the new name — this keeps files from a single
   meeting from getting split across two folders.
+- The optional local engine (`local-engine/`) currently only supports
+  Windows — it downloads a Windows whisper.cpp build and uses PowerShell to
+  extract it. Without it, transcription still works everywhere via the
+  in-browser path, just much more slowly.
